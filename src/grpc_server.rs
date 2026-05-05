@@ -23,8 +23,6 @@ impl PaymentService for MyPaymentService {
         request: Request<PaymentRequest>,
     ) -> Result<Response<PaymentResponse>, Status> {
         println!("Received payment request: {:?}", request);
-        // Process the request and return a response
-        // This example immediately returns a successful result for demonstration purposes
         Ok(Response::new(PaymentResponse { success: true }))
     }
 }
@@ -45,7 +43,7 @@ impl TransactionService for MyTransactionService {
         let (tx, rx): (Sender<Result<TransactionResponse, Status>>, Receiver<Result<TransactionResponse, Status>>) = mpsc::channel(4);
 
         tokio::spawn(async move {
-            for i in 0..30 { // Simulate sending 30 transaction records
+            for i in 0..30 {
                 if tx.send(Ok(TransactionResponse {
                     transaction_id: format!("trans_{}", i),
                     status: "Completed".to_string(),
@@ -81,12 +79,10 @@ impl ChatService for MyChatService {
         tokio::spawn(async move {
             while let Some(message) = stream.message().await.unwrap_or_else(|_| None) {
                 println!("Received message: {:?}", message);
-
                 let reply = ChatMessage {
                     user_id: message.user_id.clone(),
                     message: format!("Terima kasih telah melakukan chat kepada CS virtual, Pesan anda akan dibalas pada jam kerja. pesan anda: {}", message.message),
                 };
-
                 tx.send(Ok(reply)).await.unwrap_or_else(|_| {});
             }
         });
@@ -98,7 +94,6 @@ impl ChatService for MyChatService {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
-
     let payment_service = MyPaymentService::default();
     let transaction_service = MyTransactionService::default();
     let chat_service = MyChatService::default();

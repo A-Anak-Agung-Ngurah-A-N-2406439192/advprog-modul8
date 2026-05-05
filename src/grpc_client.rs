@@ -28,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let request = tonic::Request::new(TransactionRequest {
         user_id: "user_123".to_string(),
     });
+
     let mut stream = transaction_client.get_transaction_history(request).await?.into_inner();
     while let Some(transaction) = stream.message().await? {
         println!("Transaction: {:?}", transaction);
@@ -35,7 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let channel = Channel::from_static("http://[::1]:50051").connect().await?;
     let mut client = ChatServiceClient::new(channel);
-
     let (tx, rx): (Sender<ChatMessage>, Receiver<ChatMessage>) = mpsc::channel(32);
 
     tokio::spawn(async move {
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 message: line,
             };
             if tx.send(message).await.is_err() {
-                eprintln!("Failed to send message to server.");
+                eprintln!("Failed to send message to server");
                 break;
             }
         }
