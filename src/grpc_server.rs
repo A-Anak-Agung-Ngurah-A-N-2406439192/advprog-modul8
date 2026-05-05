@@ -1,18 +1,16 @@
 use tonic::{transport::Server, Request, Response, Status};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 pub mod services {
     tonic::include_proto!("services");
 }
 
 use services::{
-    payment_service_server::{PaymentService, PaymentServiceServer},
-    PaymentRequest, PaymentResponse,
-    transaction_service_server::{TransactionService, TransactionServiceServer},
-    TransactionRequest, TransactionResponse,
-    chat_service_server::{ChatService, ChatServiceServer},
-    ChatMessage,
+    payment_service_server::{PaymentService, PaymentServiceServer}, PaymentRequest, PaymentResponse,
+    transaction_service_server::{TransactionService, TransactionServiceServer}, TransactionRequest, TransactionResponse,
+    chat_service_server::{ChatService, ChatServiceServer}, ChatMessage
 };
 
 #[derive(Default)]
@@ -24,7 +22,9 @@ impl PaymentService for MyPaymentService {
         &self,
         request: Request<PaymentRequest>,
     ) -> Result<Response<PaymentResponse>, Status> {
-        println!("Menerima request pembayaran: {:?}", request.into_inner());
+        println!("Received payment request: {:?}", request);
+        // Process the request and return a response
+        // This example immediately returns a successful result for demonstration purposes
         Ok(Response::new(PaymentResponse { success: true }))
     }
 }
@@ -40,23 +40,23 @@ impl TransactionService for MyTransactionService {
         &self,
         request: Request<TransactionRequest>,
     ) -> Result<Response<Self::GetTransactionHistoryStream>, Status> {
-        println!("Menerima request riwayat transaksi untuk user: {:?}", request.into_inner().user_id);
+        println!("Received transaction history request: {:?}", request);
 
-        let (tx, rx) = mpsc::channel(4);
+        let (tx, rx): (Sender<Result<TransactionResponse, Status>>, Receiver<Result<TransactionResponse, Status>>) = mpsc::channel(4);
 
         tokio::spawn(async move {
-            for i in 0..10 { // Simulasi mengirim 10 data
-                let response = TransactionResponse {
+            for i in 0..30 { // Simulate sending 30 transaction records
+                if tx.send(Ok(TransactionResponse {
                     transaction_id: format!("trans_{}", i),
                     status: "Completed".to_string(),
-                    amount: 150.0,
-                    timestamp: "2024-05-01T10:00:00Z".to_string(),
-                };
-
-                if tx.send(Ok(response)).await.is_err() {
+                    amount: 100.0,
+                    timestamp: "2022-01-01T12:00:00Z".to_string(),
+                })).await.is_err() {
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                if i % 10 == 9 {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
             }
         });
 
@@ -75,23 +75,19 @@ impl ChatService for MyChatService {
         &self,
         request: Request<tonic::Streaming<ChatMessage>>,
     ) -> Result<Response<Self::ChatStream>, Status> {
-        println!("Menerima koneksi chat baru...");
-
         let mut stream = request.into_inner();
-        let (tx, rx) = mpsc::channel(4);
+        let (tx, rx) = mpsc::channel(10);
 
         tokio::spawn(async move {
-            while let Some(msg) = stream.message().await.unwrap_or(None) {
-                println!("Client bilang: {}", msg.message);
+            while let Some(message) = stream.message().await.unwrap_or_else(|_| None) {
+                println!("Received message: {:?}", message);
 
                 let reply = ChatMessage {
-                    user_id: "server_bot".to_string(),
-                    message: format!("Halo {}, pesan '{}' kamu sudah diterima!", msg.user_id, msg.message),
+                    user_id: message.user_id.clone(),
+                    message: format!("Terima kasih telah melakukan chat kepada CS virtual, Pesan anda akan dibalas pada jam kerja. pesan anda: {}", message.message),
                 };
 
-                if tx.send(Ok(reply)).await.is_err() {
-                    break;
-                }
+                tx.send(Ok(reply)).await.unwrap_or_else(|_| {});
             }
         });
 
@@ -106,8 +102,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let payment_service = MyPaymentService::default();
     let transaction_service = MyTransactionService::default();
     let chat_service = MyChatService::default();
-
-    println!("gRPC Server berjalan di {}", addr);
 
     Server::builder()
         .add_service(PaymentServiceServer::new(payment_service))
